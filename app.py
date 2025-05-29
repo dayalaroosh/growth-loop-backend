@@ -1,50 +1,58 @@
+# app.py
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
-import os
+from openai import OpenAI
 
+# Load environment variable
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Initialize OpenAI client
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Initialize Flask
 app = Flask(__name__)
 CORS(app)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Health check
+@app.route("/", methods=["GET"])
+def health_check():
+    return jsonify({"status": "ok"}), 200
 
-def generate_growth_loops(idea):
-    prompt = f"""
-You are a growth product strategist. Given the product idea below, suggest growth loops across four categories:
-1. Viral Loop
-2. Content Loop
-3. Retention Loop
-4. Paid Loop
-
-Each loop should be 2-3 lines max and include the mechanism, trigger, and expected user behavior.
-
-Product idea: "{idea}"
-"""
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "system", "content": "You are a growth product strategist."},
-                  {"role": "user", "content": prompt}],
-        temperature=0.7
-    )
-
-    answer = response["choices"][0]["message"]["content"]
-
-    return {
-        "growth_loops": answer.strip(),
-        "focus_group_url": "https://growth-focus-group.streamlit.app"
-    }
-
+# Main endpoint
 @app.route("/generate-loops", methods=["POST"])
 def generate_loops():
     data = request.get_json()
-    idea = data.get("idea", "")
+    idea = data.get("idea")
 
-    if not idea.strip():
-        return jsonify({"error": "Missing idea"}), 400
+    if not idea:
+        return jsonify({"error": "Missing 'idea' in request"}), 400
 
-    result = generate_growth_loops(idea)
-    return jsonify(result)
+    try:
+        # GPT-4 prompt setup
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a startup growth strategist. Based on the product idea provided, generate 4 types of growth loops: "
+                    "1) Viral loop, 2) Content loop, 3) Retention loop, 4) Paid loop. "
+                    "Respond in structured markdown format."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"My product idea is: {idea}"
+            }
+        ]
 
-if __name__ == "__main__":
-    app.run(debug=True)
+        # Call OpenAI
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
+
+        reply = response.choices[0].message.content
+        return jsonify({"growth_loops": reply})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
